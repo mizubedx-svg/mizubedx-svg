@@ -110,6 +110,13 @@
     background:#fff;
     color:var(--ink);
   }
+  /* 自動入力かつ編集不可(readonly)の入力欄を分かりやすくグレーアウト */
+  input[readonly]{
+    background-color:#eef2f1;
+    color:var(--muted);
+    border-color:var(--line);
+    cursor:not-allowed;
+  }
   textarea{ resize:vertical; min-height:70px; }
   .options{ display:flex; flex-direction:column; gap:8px; }
   .options label{
@@ -270,16 +277,15 @@
 <main>
   <form id="obsForm">
 
-    <!-- ===== 共通項目 ===== -->
     <div class="card">
       <h2>基本情報</h2>
       <div class="field">
         <label class="q">日付<span class="req">*</span></label>
-        <input type="date" name="observation_date" required>
+        <input type="date" id="obs_date" name="observation_date" required readonly>
       </div>
       <div class="field">
         <label class="q">時間<span class="req">*</span></label>
-        <input type="time" name="observation_time" required>
+        <input type="time" id="obs_time" name="observation_time" required readonly>
       </div>
       <div class="field">
         <label class="q">観測員ID<span class="req">*</span></label>
@@ -296,7 +302,6 @@
       </div>
     </div>
 
-    <!-- ===== BBQ場 ===== -->
     <section class="area-section" data-area="二子玉川バーベキュー場">
       <div class="card">
         <h2>【二子玉川BBQ場】観測項目 <span class="badge">BBQ場</span></h2>
@@ -355,7 +360,7 @@
           <div class="options">
             <label><input type="radio" name="bbq_flow_speed" value="0"> 0：緩やか</label>
             <label><input type="radio" name="bbq_flow_speed" value="1"> 1：普通</label>
-            <label><input type="radio" name="bbq_flow_speed" value="2"> 2：速い</label>
+            <label><input type="radio" name="bbq_flow_speed" value="2"> 2::速い</label>
             <label><input type="radio" name="bbq_flow_speed" value="3"> 3：激流（引き込まれる危険）</label>
           </div>
         </div>
@@ -448,7 +453,6 @@
       </div>
     </section>
 
-    <!-- ===== 兵庫島公園1 ===== -->
     <section class="area-section" data-area="兵庫島公園1">
       <div class="card">
         <h2>【兵庫島公園1】観測項目 <span class="badge">兵庫島1</span></h2>
@@ -600,7 +604,6 @@
       </div>
     </section>
 
-    <!-- ===== 兵庫島公園2（多摩川側） ===== -->
     <section class="area-section" data-area="兵庫島公園2（多摩川側）">
       <div class="card">
         <h2>【兵庫島公園2】多摩川側 <span class="badge">兵庫島2</span></h2>
@@ -692,7 +695,7 @@
           <label class="q">危険フラグ</label>
           <div class="options">
             <label><input type="checkbox" name="h2_danger_flags" value="本流泳ぎ"> 本流泳ぎ</label>
-            <label><input type="checkbox" name="h2_danger_flags" value="対岸からの移動"> 対岸からの移動</label>
+            <label><input type="checkbox" name="h2_danger_flags" value="対岸からの移動"> 对岸からの移動</label>
             <label><input type="checkbox" name="h2_danger_flags" value="飛び込み"> 飛び込み</label>
             <label><input type="checkbox" name="h2_danger_flags" value="深みへ転落"> 深みへ転落</label>
             <label><input type="checkbox" name="h2_danger_flags" value="飲酒状態の接近"> 飲酒状態の接近</label>
@@ -730,17 +733,31 @@
 </main>
 
 <script>
+// ===== 【新規追加】画面読み込み時に現在の日時を自動表記し固定する機能 =====
+window.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  
+  // ① 日付（YYYY-MM-DD）のフォーマット
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const date = String(now.getDate()).padStart(2, '0');
+  document.getElementById('obs_date').value = `${year}-${month}-${date}`;
+  
+  // ② 時刻（HH:MM）のフォーマット
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('obs_time').value = `${hours}:${minutes}`;
+});
+
 const areaSelect = document.getElementById('areaSelect');
 const sections = document.querySelectorAll('.area-section');
 
 function setRequiredWithin(section, on){
   section.querySelectorAll('input[type=radio], input[type=text], select').forEach(el=>{
-    // 状況メモ・一言サマリー・危険フラグは元々任意なので対象外
     const optionalNames = ['site_memo','event_log','summary','danger_flags'];
     const isOptional = optionalNames.some(n => el.name.endsWith(n));
     if(!isOptional && el.type !== 'checkbox'){
       if(el.type === 'radio'){
-        // ラジオグループはグループ内どれか1つにrequiredを付与すれば良い
         el.required = on;
       } else {
         el.required = on;
@@ -765,7 +782,7 @@ const overlay = document.getElementById('emergencyOverlay');
 const overlayDetail = document.getElementById('emergencyDetail');
 const overlayAck = document.getElementById('emergencyAck');
 
-let lastAckedAlertKey = null; // 同じ危険状態で毎回ポップアップしないようにする
+let lastAckedAlertKey = null;
 
 function formatUpdated(iso){
   if(!iso) return '';
@@ -806,11 +823,11 @@ async function refreshStatus(){
 
 overlayAck.addEventListener('click', () => {
   overlay.classList.remove('show');
-  lastAckedAlertKey = statusText.textContent; // このセッション内では再ポップアップしない
+  lastAckedAlertKey = statusText.textContent;
 });
 
 refreshStatus();
-setInterval(refreshStatus, 5 * 60 * 1000); // 5分ごとに自動更新
+setInterval(refreshStatus, 5 * 60 * 1000);
 
 document.getElementById('obsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -827,6 +844,18 @@ document.getElementById('obsForm').addEventListener('submit', async (e) => {
       resultEl.className = 'ok';
       e.target.reset();
       sections.forEach(sec => sec.classList.remove('active'));
+      
+      // 送信完了でフォームがリセットされた後、再度その時点の最新日時をセットする
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const date = String(now.getDate()).padStart(2, '0');
+      document.getElementById('obs_date').value = `${year}-${month}-${date}`;
+      
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('obs_time').value = `${hours}:${minutes}`;
+
     } else {
       resultEl.textContent = `エラー: ${data.error}`;
       resultEl.className = 'err';
