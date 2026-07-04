@@ -50,9 +50,14 @@
             </div>
         </div>
 
-        <div class="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+      <div class="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
     <h3 class="font-bold text-slate-700 flex items-center"><i class="fa-solid fa-database mr-2 text-blue-600"></i> パトロール観測データログ</h3>
     <div class="flex items-center space-x-3">
+        <label class="text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-3 py-1.5 rounded-lg border border-blue-200 transition shadow-sm flex items-center cursor-pointer">
+            <i class="fa-solid fa-file-import mr-1"></i> シートからデータインポート
+            <input type="file" id="csvImportInput" accept=".csv" class="hidden" onchange="handleCsvImport(this)">
+        </label>
+        
         <a href="/api/report/export/csv" class="text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition shadow-sm flex items-center">
             <i class="fa-solid fa-file-excel mr-1"></i> スプレッドシート用出力
         </a>
@@ -212,6 +217,37 @@ if (s.warnings && s.warnings.length > 0 && !joinedWarnings.includes('None') && j
         loadDashboard();
         setInterval(loadStatusCards, 5 * 60 * 1000); // 気象・水位カードは5分ごとに自動更新
         console.log("Dashboard UI loaded successfully.");
+    function handleCsvImport(input) {
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    
+    if (!confirm(`選択したCSVファイルからデータをシステムにインポートしますか？`)) {
+        input.value = '';
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    fetch('/api/report/import/csv', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            loadDashboard(); // 一覧を再読み込み
+        } else {
+            alert(`エラー: ${data.error}`);
+        }
+        input.value = '';
+    })
+    .catch(err => {
+        alert('通信エラーが発生しました。');
+        input.value = '';
+    });
+}
     </script>
 </body>
 </html>
