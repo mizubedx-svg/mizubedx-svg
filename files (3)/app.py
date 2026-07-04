@@ -368,78 +368,111 @@ def api_observations():
     return jsonify({"observations": results, "today_count": today_count})
 
 
-# 📊 【新設】スプレッドシート用の一括データ出力ルート (正しい位置に配置)
-@app.route("/api/report/export/csv")
+# 📥 【新設】Googleスプレッドシート(CSV)からデータをシステムに取り込むルート
+@app.route("/api/report/import/csv", methods=["POST"])
 @requires_auth
-def export_csv():
-    """データベースの全エリアの観測データを、設計したGoogleスプレッドシート形式に紐解いて出力する"""
-    db = get_db()
-    observations = db.execute("SELECT * FROM observations ORDER BY id ASC").fetchall()
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # スプレッドシートのA列〜V列のヘッダー定義
-    writer.writerow([
-        "日付", "時間", "観測者ID", "観測エリア", "時間帯", "天候", 
-        "前日〜当日の雨", "上流の影響", "水位", "流速", "濁り", 
-        "人の多さ", "水際接近", "滞留密度", "飲酒レベル", 
-        "保護者の監視レベル", "対岸の状況影響", "危険フラグ", 
-        "現場メモ", "イベントログ", "スタッフサマリー", "写真URL"
-    ])
-    
-    for obs in observations:
-        config = AREA_CONFIG.get(obs["area"])
-        area_row = None
-        if config:
-            area_row = db.execute(
-                "SELECT * FROM {} WHERE observation_id = ?".format(config['table']), (obs["id"],)
-            ).fetchone()
-            
-        if not area_row:
-            continue
-
-        # 各エリアごとの特有のカラムを安全に抽出
-        time_slot = area_row["time_slot"] if "time_slot" in area_row.keys() else ""
-        rain_recent = area_row["rain_recent"] if "rain_recent" in area_row.keys() else ""
-        upstream_impact = area_row["upstream_impact"] if "upstream_impact" in area_row.keys() else ""
-        alcohol_level = area_row["alcohol_level"] if "alcohol_level" in area_row.keys() else ""
-        guardian_supervision = area_row["guardian_supervision"] if "guardian_supervision" in area_row.keys() else ""
-        opposite_bank_impact = area_row["opposite_bank_impact"] if "opposite_bank_impact" in area_row.keys() else ""
+def import_csv():
+    """アップロードされたCSVデータを読み込み、エリア別の各テーブルへ安全に一括挿入する"""
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "ファイルが添付されていません"}), 400
         
-        # 写真URL（サーバーのドメインと合体させてリンク化）
-        photo_url = f"{request.host_url}static/{area_row['photo_path']}" if area_row["photo_path"] else ""
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"ok": False, "error": "ファイル名が空です"}), 400
 
-        writer.writerow([
-            obs["observation_date"],
-            obs["observation_time"],
-            obs["observer_id"],
-            obs["area"],
-            time_slot,
-            area_row["weather"],
-            rain_recent,
-            upstream_impact,
-            area_row["water_level"],
-            area_row["flow_speed"],
-            area_row["turbidity"],
-            area_row["crowd_level"],
-            area_row["water_edge_approach"],
-            area_row["density_level"],
-            alcohol_level,
-            guardian_supervision,
-            opposite_bank_impact,
-            area_row["danger_flags"] or "",
-            area_row["site_memo"] or "",
-            area_row["event_log"] or "",
-            area_row["summary"] or "",
-            photo_url
-        ])
-    
-    response = make_response(output.getvalue().encode('utf-8-sig'))
-    response.headers["Content-Disposition"] = "attachment; filename=mizube_export.csv"
-    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
-    return response
+    try:
+        # UTF-8-SIGでCSVを読み込む
+        stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
+        reader = csv.reader(stream)
+        
+        header = next(reader) # 1行目のヘッダー（見出し）をスキップ
+        
+        db = get_db()
+        import_count = 0
+        
+        for row in reader:
+            if not row or len(row) < 4:
+                continue # 空行や不完全な行はスキップ
+                
+            # A列〜V列のデータを順番に分解
+            obs_date       = row[0].strip()
+            obs_time       = row[1].strip()
+            observer_id    = row[2].strip()
+            area           = row[3].strip()
+            time_slot      = row[4].strip()
+            weather        = row[5].strip()
+            rain_recent    = row[6].strip()
+            upstream       = row[7].strip()
+            water_level    = row[8].strip() or None
+            flow_speed     = row[9].strip() or None
+            turbidity      = row[10].strip() or None
+            crowd_level    = row[11].strip() or None
+            water_approach = row[12].strip() or None
+            density_level  = row[13].strip() or None
+            alcohol_level  = row[14].strip() or None
+            guardian       = row[15].strip() or None
+            opposite_bank  = row[16].strip() or None
+            danger_flags   = row[17].strip()
+            site_memo      = row[18].strip()
+            event_log      = row[19].strip()
+            summary        = row[20].strip()
+            # row[21] の写真URLは過去データ移行時はphoto_pathが空になるため適宜処理
+            
+            if area not in AREA_CONFIG:
+                continue # 対象外のエリア名ならスキップ
 
+            # 1. 親テーブル (observations) に挿入
+            cur = db.execute(
+                """INSERT INTO observations (observation_date, observation_time, observer_id, area)
+                   VALUES (?, ?, ?, ?)""",
+                (obs_date, obs_time, observer_id, area)
+            )
+            obs_id = cur.lastrowid
+            
+            # 2. 子テーブル（エリア別テーブル）に挿入
+            config = AREA_CONFIG[area]
+            
+            if area == "二子玉川バーベキュー場":
+                db.execute(
+                    f"""INSERT INTO {config['table']} (
+                        observation_id, time_slot, weather, rain_recent, upstream_impact,
+                        water_level, flow_speed, turbidity, crowd_level, water_edge_approach,
+                        density_level, alcohol_level, danger_flags, site_memo, event_log, summary
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (obs_id, time_slot, weather, rain_recent, upstream, water_level, flow_speed, 
+                     turbidity, crowd_level, water_approach, density_level, alcohol_level, 
+                     danger_flags, site_memo, event_log, summary)
+                )
+            elif area == "兵庫島公園1":
+                db.execute(
+                    f"""INSERT INTO {config['table']} (
+                        observation_id, time_slot, weather, rain_recent, upstream_impact,
+                        water_level, flow_speed, turbidity, crowd_level, water_edge_approach,
+                        density_level, guardian_supervision, danger_flags, site_memo, event_log, summary
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (obs_id, time_slot, weather, rain_recent, upstream, water_level, flow_speed, 
+                     turbidity, crowd_level, water_approach, density_level, guardian, 
+                     danger_flags, site_memo, event_log, summary)
+                )
+            elif area == "兵庫島公園2（多摩川側）":
+                db.execute(
+                    f"""INSERT INTO {config['table']} (
+                        observation_id, weather, water_level, flow_speed, turbidity, 
+                        crowd_level, water_edge_approach, density_level, opposite_bank_impact, 
+                        danger_flags, site_memo, event_log, summary
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (obs_id, weather, water_level, flow_speed, turbidity, crowd_level, 
+                     water_approach, density_level, opposite_bank, danger_flags, site_memo, event_log, summary)
+                )
+                
+            import_count += 1
+            
+        db.commit()
+        return jsonify({"ok": True, "message": f"{import_count} 件のデータをインポートしました"})
+        
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": f"インポート失敗: {str(e)}"}), 500
 
 # ------------------------------------------------------------------
 # 日次PDFレポート（Gemini要約＋写真埋め込み）
