@@ -122,16 +122,19 @@
                 cardWeather.classList.remove('border-amber-500', 'border-red-500', 'border-emerald-500');
                 weatherEl.classList.remove('text-amber-600', 'text-red-600', 'text-emerald-600');
 
-                if (s.warnings && s.warnings.length > 0) {
-                    const isDanger = s.alert_level === 'danger';
-                    cardWeather.classList.add(isDanger ? 'border-red-500' : 'border-amber-500');
-                    weatherEl.classList.add(isDanger ? 'text-red-600' : 'text-amber-600');
-                    weatherEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${escapeHtml(s.warnings.join('・'))} 発令中`;
-                } else {
-                    cardWeather.classList.add('border-emerald-500');
-                    weatherEl.classList.add('text-emerald-600');
-                    weatherEl.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> 警報・注意報なし`;
-                }
+              // 🔒 【修正後】Noneという文字警報を強制的に「警報なし」にする安全装置
+const joinedWarnings = s.warnings ? s.warnings.join('・') : '';
+
+if (s.warnings && s.warnings.length > 0 && joinedWarnings !== 'None' && joinedWarnings.trim() !== '') {
+    const isDanger = s.alert_level === 'danger';
+    cardWeather.classList.add(isDanger ? 'border-red-500' : 'border-amber-500');
+    weatherEl.classList.add(isDanger ? 'text-red-600' : 'text-amber-600');
+    weatherEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${escapeHtml(s.warnings.join('・'))} 発令中`;
+} else {
+    cardWeather.classList.add('border-emerald-500');
+    weatherEl.classList.add('text-emerald-600');
+    weatherEl.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> 警報・注意報なし`;
+}
                 weatherUpdatedEl.textContent = s.jma_report_time ? `気象庁発表: ${s.jma_report_time}` : '';
             } catch (err) {
                 document.getElementById('live-weather-alerts').innerHTML =
