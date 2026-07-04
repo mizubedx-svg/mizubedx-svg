@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水辺リスク観測</title>
+<style>
+  :root{
+    --ink:#132832;
+    --paper:#f4f7f6;
+    --card:#ffffff;
+    --river:#1f6f8b;
+    --river-dark:#164f63;
+    --tide:#7fb5c4;
+    --alert:#b3423a;
+    --line:#dbe4e2;
+    --muted:#5c6f72;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;
+    line-height:1.6;
+    padding-bottom:60px;
+  }
+  header{
+    background:linear-gradient(135deg,var(--river-dark),var(--river));
+    color:#fff;
+    padding:28px 20px 34px;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute;
+    right:-40px; bottom:-60px;
+    width:220px; height:220px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.08);
+  }
+  header h1{
+    margin:0 0 4px;
+    font-size:1.5rem;
+    letter-spacing:.02em;
+  }
+  header p{
+    margin:0;
+    font-size:.85rem;
+    color:var(--tide);
+  }
+  .wave{
+    display:block;
+    width:100%;
+    height:18px;
+    margin-top:14px;
+    opacity:.5;
+  }
+  main{
+    max-width:640px;
+    margin:-18px auto 0;
+    padding:0 16px;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px 18px;
+    margin-bottom:16px;
+    box-shadow:0 1px 2px rgba(19,40,50,0.04);
+  }
+  .card h2{
+    font-size:1rem;
+    margin:0 0 14px;
+    color:var(--river-dark);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .card h2 .badge{
+    font-size:.65rem;
+    background:var(--river);
+    color:#fff;
+    padding:2px 8px;
+    border-radius:999px;
+    letter-spacing:.05em;
+  }
+  .field{ margin-bottom:16px; }
+  .field:last-child{ margin-bottom:0; }
+  label.q{
+    display:block;
+    font-size:.88rem;
+    font-weight:600;
+    margin-bottom:6px;
+  }
+  label.q .req{ color:var(--alert); margin-left:2px; }
+  .hint{ font-size:.76rem; color:var(--muted); margin:-2px 0 8px; }
+  input[type="text"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-size:.92rem;
+    font-family:inherit;
+    background:#fff;
+    color:var(--ink);
+  }
+  textarea{ resize:vertical; min-height:70px; }
+  .options{ display:flex; flex-direction:column; gap:8px; }
+  .options label{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-size:.88rem;
+    cursor:pointer;
+  }
+  .options label:has(input:checked){
+    border-color:var(--river);
+    background:#eef6f8;
+  }
+  .options.scale{ flex-direction:row; flex-wrap:wrap; }
+  .options.scale label{ flex:1 1 auto; min-width:100px; }
+  input[type="file"]{
+    width:100%;
+    font-size:.85rem;
+  }
+  .area-section{ display:none; }
+  .area-section.active{ display:block; }
+  .notice{
+    background:#fdf2ef;
+    border:1px solid #f1c9c1;
+    color:var(--alert);
+    font-size:.78rem;
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:14px;
+    white-space:pre-line;
+  }
+  button.submit{
+    width:100%;
+    padding:14px;
+    background:var(--river-dark);
+    color:#fff;
+    border:none;
+    border-radius:10px;
+    font-size:1rem;
+    font-weight:700;
+    letter-spacing:.03em;
+    cursor:pointer;
+  }
+  button.submit:active{ background:var(--river); }
+  #result{
+    max-width:640px;
+    margin:14px auto;
+    padding:0 16px;
+    font-size:.88rem;
+  }
+  #result.ok{ color:#1f6f37; }
+  #result.err{ color:var(--alert); }
+  .section-divider{
+    font-size:.8rem;
+    font-weight:700;
+    color:var(--river-dark);
+    margin:18px 0 8px;
+    padding-top:4px;
+    border-top:1px dashed var(--line);
+  }
+
+  /* ===== 気象ステータス・ティッカー ===== */
+  #statusBar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 16px;
+    font-size:.8rem;
+    font-weight:600;
+    color:#fff;
+    background:#2f6b52;
+    overflow:hidden;
+    white-space:nowrap;
+  }
+  #statusBar.caution{ background:#b8791f; }
+  #statusBar.danger{ background:var(--alert); animation:pulse 1.4s infinite; }
+  #statusBar .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:#fff; flex:0 0 auto;
+  }
+  #statusBar .ticker-text{
+    flex:1 1 auto;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #statusBar .updated{
+    font-size:.68rem;
+    opacity:.85;
+    font-weight:400;
+    flex:0 0 auto;
+  }
+  @keyframes pulse{
+    0%,100%{ filter:brightness(1); }
+    50%{ filter:brightness(1.25); }
+  }
+
+  /* ===== 全画面緊急アラート ===== */
+  #emergencyOverlay{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(120,20,15,0.96);
+    color:#fff;
+    z-index:9999;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:24px;
+  }
+  #emergencyOverlay.show{ display:flex; }
+  #emergencyOverlay h2{
+    font-size:1.6rem;
+    margin:0 0 10px;
+    letter-spacing:.05em;
+  }
+  #emergencyOverlay p{
+    font-size:.95rem;
+    max-width:420px;
+    margin:0 0 22px;
+    line-height:1.7;
+  }
+  #emergencyOverlay button{
+    padding:12px 28px;
+    border-radius:999px;
+    border:2px solid #fff;
+    background:transparent;
+    color:#fff;
+    font-size:.9rem;
+    font-weight:700;
+    cursor:pointer;
+  }
+  #emergencyOverlay button:active{ background:rgba(255,255,255,0.15); }
+</style>
+</head>
+<body>
+
+<div id="emergencyOverlay">
+  <h2>【警告】即時避難推奨</h2>
+  <p id="emergencyDetail">大雨警報・洪水警報の発令、または多摩川の水位が危険水位に到達しています。現場の安全を最優先に、速やかな避難誘導を検討してください。</p>
+  <button id="emergencyAck">確認しました</button>
+</div>
+
+<header>
+  <h1>水辺リスク観測</h1>
+  <p>現場のエリアに応じて必要な判定項目のみ表示されます</p>
+  <svg class="wave" viewBox="0 0 400 20" preserveAspectRatio="none"><path d="M0 10 Q 25 0 50 10 T 100 10 T 150 10 T 200 10 T 250 10 T 300 10 T 350 10 T 400 10" fill="none" stroke="#fff" stroke-width="2"/></svg>
+</header>
+
+<div id="statusBar">
+  <span class="dot"></span>
+  <span class="ticker-text" id="statusText">気象・水位情報を取得中...</span>
+  <span class="updated" id="statusUpdated"></span>
+</div>
+
+<main>
+  <form id="obsForm">
+
+    <!-- ===== 共通項目 ===== -->
+    <div class="card">
+      <h2>基本情報</h2>
+      <div class="field">
+        <label class="q">日付<span class="req">*</span></label>
+        <input type="date" name="observation_date" required>
+      </div>
+      <div class="field">
+        <label class="q">時間<span class="req">*</span></label>
+        <input type="time" name="observation_time" required>
+      </div>
+      <div class="field">
+        <label class="q">観測員ID<span class="req">*</span></label>
+        <input type="text" name="observer_id" required placeholder="例：OBS-03">
+      </div>
+      <div class="field">
+        <label class="q">【最重要】観測エリアを選択してください<span class="req">*</span></label>
+        <select id="areaSelect" name="area" required>
+          <option value="" disabled selected>選択してください</option>
+          <option value="二子玉川バーベキュー場">二子玉川バーベキュー場</option>
+          <option value="兵庫島公園1">兵庫島公園1</option>
+          <option value="兵庫島公園2（多摩川側）">兵庫島公園2（多摩川側）</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ===== BBQ場 ===== -->
+    <section class="area-section" data-area="二子玉川バーベキュー場">
+      <div class="card">
+        <h2>【二子玉川BBQ場】観測項目 <span class="badge">BBQ場</span></h2>
+
+        <div class="field">
+          <label class="q">時間帯<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_time_slot" value="昼ピーク（11:30-14:30）"> 昼ピーク（11:30-14:30）</label>
+            <label><input type="radio" name="bbq_time_slot" value="夕方ピーク（16:30-18:00）"> 夕方ピーク（16:30-18:00）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">天候<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_weather" value="晴れ"> 晴れ</label>
+            <label><input type="radio" name="bbq_weather" value="曇り"> 曇り</label>
+            <label><input type="radio" name="bbq_weather" value="小雨"> 小雨</label>
+            <label><input type="radio" name="bbq_weather" value="雨"> 雨</label>
+            <label><input type="radio" name="bbq_weather" value="強い雨"> 強い雨</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">前日〜当日の雨<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_rain_recent" value="なし"> なし</label>
+            <label><input type="radio" name="bbq_rain_recent" value="少しあり"> 少しあり</label>
+            <label><input type="radio" name="bbq_rain_recent" value="あり"> あり</label>
+            <label><input type="radio" name="bbq_rain_recent" value="多い（増水注意）"> 多い（増水注意）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">上流の影響（体感）<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_upstream_impact" value="影響なし"> 影響なし</label>
+            <label><input type="radio" name="bbq_upstream_impact" value="少し変化あり"> 少し変化あり</label>
+            <label><input type="radio" name="bbq_upstream_impact" value="変化あり（濁り・流木）"> 変化あり（濁り・流木）</label>
+            <label><input type="radio" name="bbq_upstream_impact" value="明確な増水兆候"> 明確な増水兆候</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水位 (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_water_level" value="0"> 0：低い（河原が広い）</label>
+            <label><input type="radio" name="bbq_water_level" value="1"> 1：普通</label>
+            <label><input type="radio" name="bbq_water_level" value="2"> 2：高い（砂利スペース縮小）</label>
+            <label><input type="radio" name="bbq_water_level" value="3"> 3：危険（護岸付近まで）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">流速 (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_flow_speed" value="0"> 0：緩やか</label>
+            <label><input type="radio" name="bbq_flow_speed" value="1"> 1：普通</label>
+            <label><input type="radio" name="bbq_flow_speed" value="2"> 2：速い</label>
+            <label><input type="radio" name="bbq_flow_speed" value="3"> 3：激流（引き込まれる危険）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">濁り (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_turbidity" value="0"> 0：澄んでいる</label>
+            <label><input type="radio" name="bbq_turbidity" value="1"> 1：やや濁り</label>
+            <label><input type="radio" name="bbq_turbidity" value="2"> 2：濁り（茶色）</label>
+            <label><input type="radio" name="bbq_turbidity" value="3"> 3：激しい濁り</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">人の多さ<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_crowd_level" value="0"> 0：空いている</label>
+            <label><input type="radio" name="bbq_crowd_level" value="1"> 1：やや混雑</label>
+            <label><input type="radio" name="bbq_crowd_level" value="2"> 2：混雑</label>
+            <label><input type="radio" name="bbq_crowd_level" value="3"> 3：非常に混雑</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水際接近<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_water_edge_approach" value="0"> 0：なし</label>
+            <label><input type="radio" name="bbq_water_edge_approach" value="1"> 1：少し</label>
+            <label><input type="radio" name="bbq_water_edge_approach" value="2"> 2：頻繁</label>
+            <label><input type="radio" name="bbq_water_edge_approach" value="3"> 3：常に危険接近</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">滞留密度<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_density_level" value="0"> 0：分散</label>
+            <label><input type="radio" name="bbq_density_level" value="1"> 1：やや集中</label>
+            <label><input type="radio" name="bbq_density_level" value="2"> 2：集中</label>
+            <label><input type="radio" name="bbq_density_level" value="3"> 3：密集</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">飲酒レベル<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="bbq_alcohol_level" value="0"> 0：なし</label>
+            <label><input type="radio" name="bbq_alcohol_level" value="1"> 1：少し</label>
+            <label><input type="radio" name="bbq_alcohol_level" value="2"> 2：複数あり</label>
+            <label><input type="radio" name="bbq_alcohol_level" value="3"> 3：多数飲酒</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">危険フラグ</label>
+          <div class="options">
+            <label><input type="checkbox" name="bbq_danger_flags" value="子ども単独"> 子ども単独</label>
+            <label><input type="checkbox" name="bbq_danger_flags" value="飛び込み"> 飛び込み</label>
+            <label><input type="checkbox" name="bbq_danger_flags" value="流れ急変"> 流れ急変</label>
+            <label><input type="checkbox" name="bbq_danger_flags" value="岸の崩れ"> 岸の崩れ</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">状況メモ（任意）</label>
+          <p class="hint">現場の雰囲気や気になる動き、特記事項があれば自由に記入してください。</p>
+          <textarea name="bbq_site_memo"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">イベント発生（任意）</label>
+          <p class="hint">ヒヤリハット、トラブル、注意喚起、救護などが発生した場合は時間と内容を具体的に記録してください。</p>
+          <textarea name="bbq_event_log"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">一言サマリー（任意）</label>
+          <p class="hint">例：若者グループ多数、水際混雑など</p>
+          <input type="text" name="bbq_summary">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>現場の写真 <span class="badge">本流・水際・空のみ</span></h2>
+        <div class="notice">【重要：BBQ客の座席エリア・テントへのカメラ向けは一切厳禁】
+人が写らない本流・水際（足元や水面）または上空（天候）のみ撮影してください。混雑度を撮る場合も、人の顔やBBQ機材が写らない超遠景のみ。
+声をかけられたら直ちに撮影を中断し「水面の安全調査です」と説明してください。</div>
+        <div class="field">
+          <input type="file" name="bbq_photo" accept="image/*">
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 兵庫島公園1 ===== -->
+    <section class="area-section" data-area="兵庫島公園1">
+      <div class="card">
+        <h2>【兵庫島公園1】観測項目 <span class="badge">兵庫島1</span></h2>
+
+        <div class="field">
+          <label class="q">時間帯<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_time_slot" value="昼ピーク（11:30-14:30）"> 昼ピーク（11:30-14:30）</label>
+            <label><input type="radio" name="h1_time_slot" value="夕方ピーク（16:30-18:00）"> 夕方ピーク（16:30-18:00）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">天候<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_weather" value="晴れ"> 晴れ</label>
+            <label><input type="radio" name="h1_weather" value="曇り"> 曇り</label>
+            <label><input type="radio" name="h1_weather" value="小雨"> 小雨</label>
+            <label><input type="radio" name="h1_weather" value="雨"> 雨</label>
+            <label><input type="radio" name="h1_weather" value="強い雨"> 強い雨</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">前日〜当日の雨<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_rain_recent" value="なし"> なし</label>
+            <label><input type="radio" name="h1_rain_recent" value="少しあり"> 少しあり</label>
+            <label><input type="radio" name="h1_rain_recent" value="あり"> あり</label>
+            <label><input type="radio" name="h1_rain_recent" value="多い（増水注意）"> 多い（増水注意）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">上流の影響（野川・合流部）<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_upstream_impact" value="影響なし"> 影響なし</label>
+            <label><input type="radio" name="h1_upstream_impact" value="少し変化あり"> 少し変化あり</label>
+            <label><input type="radio" name="h1_upstream_impact" value="変化あり（水路の増水）"> 変化あり（水路の増水）</label>
+            <label><input type="radio" name="h1_upstream_impact" value="明確な増水兆候"> 明確な増水兆候</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水位（人工水路・ひょうたん池）(0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_water_level" value="0"> 0：低い（水路が浅い）</label>
+            <label><input type="radio" name="h1_water_level" value="1"> 1：普通</label>
+            <label><input type="radio" name="h1_water_level" value="2"> 2：高い（水路から溢れそう）</label>
+            <label><input type="radio" name="h1_water_level" value="3"> 3：危険（水路・池の境界が水没）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">流速（野川・合流部手前）(0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_flow_speed" value="0"> 0：緩やか（ほぼ静水）</label>
+            <label><input type="radio" name="h1_flow_speed" value="1"> 1：普通</label>
+            <label><input type="radio" name="h1_flow_speed" value="2"> 2：速い（子どもが足を取られる）</label>
+            <label><input type="radio" name="h1_flow_speed" value="3"> 3：激流（引き込まれる危険）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">濁り（野川・合流部手前）(0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_turbidity" value="0"> 0：澄んでいる</label>
+            <label><input type="radio" name="h1_turbidity" value="1"> 1：やや濁り</label>
+            <label><input type="radio" name="h1_turbidity" value="2"> 2：濁り（茶色）</label>
+            <label><input type="radio" name="h1_turbidity" value="3"> 3：激しい濁り</label>
+          </div>
+        </div>
+
+        <div class="section-divider">■ 人的リスク（ファミリー・児童）</div>
+
+        <div class="field">
+          <label class="q">人の多さ (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_crowd_level" value="0"> 0：空いている</label>
+            <label><input type="radio" name="h1_crowd_level" value="1"> 1：やや混雑</label>
+            <label><input type="radio" name="h1_crowd_level" value="2"> 2：混雑</label>
+            <label><input type="radio" name="h1_crowd_level" value="3"> 3：非常に混雑</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水際接近（野川・合流部への接近）(0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_water_edge_approach" value="0"> 0：なし（人工水路のみ）</label>
+            <label><input type="radio" name="h1_water_edge_approach" value="1"> 1：少し</label>
+            <label><input type="radio" name="h1_water_edge_approach" value="2"> 2：頻繁（野川の深い場所に近づいている）</label>
+            <label><input type="radio" name="h1_water_edge_approach" value="3"> 3：常に危険接近（子ども単独で野川進入など）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">滞留密度 (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h1_density_level" value="0"> 0：分散</label>
+            <label><input type="radio" name="h1_density_level" value="1"> 1：やや集中</label>
+            <label><input type="radio" name="h1_density_level" value="2"> 2：集中</label>
+            <label><input type="radio" name="h1_density_level" value="3"> 3：密集</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">保護者の監視レベル (0-2)<span class="req">*</span></label>
+          <p class="hint">雨など人がそもそもいないときは「0」にチェック</p>
+          <div class="options">
+            <label><input type="radio" name="h1_guardian_supervision" value="0"> 0：複数あり（全員に付き添い）</label>
+            <label><input type="radio" name="h1_guardian_supervision" value="1"> 1：少しあり（スマホ・テントから見守り）</label>
+            <label><input type="radio" name="h1_guardian_supervision" value="2"> 2：なし（子どもだけで遊んでおり大人不在）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">危険フラグ</label>
+          <div class="options">
+            <label><input type="checkbox" name="h1_danger_flags" value="子ども単独"> 子ども単独</label>
+            <label><input type="checkbox" name="h1_danger_flags" value="流れ急変"> 流れ急変</label>
+            <label><input type="checkbox" name="h1_danger_flags" value="スリップ（苔・ぬめり）"> スリップ（苔・ぬめり）</label>
+            <label><input type="checkbox" name="h1_danger_flags" value="サンダル流され"> サンダル流され</label>
+            <label><input type="checkbox" name="h1_danger_flags" value="吸い込み（合流部）"> 吸い込み（合流部）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">状況メモ（任意）</label>
+          <textarea name="h1_site_memo"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">イベント発生（任意）</label>
+          <textarea name="h1_event_log"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">一言サマリー（任意）</label>
+          <input type="text" name="h1_summary">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>現場の写真 <span class="badge">人工水路・野川水面・空のみ</span></h2>
+        <div class="notice">【重要：子どもや保護者、テントエリアへのカメラ向けは一切厳禁】
+不審者・盗撮の誤解を避けるため、芝生広場やテントに向けてカメラを構えることは絶対に避けてください。
+少しでも周囲の保護者から不審そうな視線を感じたら、一切撮影をせず数値入力のみで送信してください。</div>
+        <div class="field">
+          <input type="file" name="h1_photo" accept="image/*">
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 兵庫島公園2（多摩川側） ===== -->
+    <section class="area-section" data-area="兵庫島公園2（多摩川側）">
+      <div class="card">
+        <h2>【兵庫島公園2】多摩川側 <span class="badge">兵庫島2</span></h2>
+
+        <div class="field">
+          <label class="q">天候<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h2_weather" value="晴れ"> 晴れ</label>
+            <label><input type="radio" name="h2_weather" value="曇り"> 曇り</label>
+            <label><input type="radio" name="h2_weather" value="小雨"> 小雨</label>
+            <label><input type="radio" name="h2_weather" value="雨"> 雨</label>
+            <label><input type="radio" name="h2_weather" value="強い雨"> 強い雨</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水位（多摩川本流）(0-3)</label>
+          <div class="options">
+            <label><input type="radio" name="h2_water_level" value="0"> 0：低い（護岸・砂利が見えている）</label>
+            <label><input type="radio" name="h2_water_level" value="1"> 1：普通</label>
+            <label><input type="radio" name="h2_water_level" value="2"> 2：高い（水際が護岸の上まで迫る）</label>
+            <label><input type="radio" name="h2_water_level" value="3"> 3：危険（テラスや歩道付近まで増水）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">流速（多摩川本流）(0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h2_flow_speed" value="0"> 0：緩やか</label>
+            <label><input type="radio" name="h2_flow_speed" value="1"> 1：普通</label>
+            <label><input type="radio" name="h2_flow_speed" value="2"> 2：速い（白波が立っている）</label>
+            <label><input type="radio" name="h2_flow_speed" value="3"> 3：激流（渦を巻いており極めて危険）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">濁り (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h2_turbidity" value="0"> 0：澄んでいる</label>
+            <label><input type="radio" name="h2_turbidity" value="1"> 1：やや濁り</label>
+            <label><input type="radio" name="h2_turbidity" value="2"> 2：濁り（茶色）</label>
+            <label><input type="radio" name="h2_turbidity" value="3"> 3：激しい濁り</label>
+          </div>
+        </div>
+
+        <div class="section-divider">■ 人的リスク（本流接近・対岸連携）</div>
+
+        <div class="field">
+          <label class="q">人の多さ (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h2_crowd_level" value="0"> 0：空いている</label>
+            <label><input type="radio" name="h2_crowd_level" value="1"> 1：やや混雑</label>
+            <label><input type="radio" name="h2_crowd_level" value="2"> 2：混雑</label>
+            <label><input type="radio" name="h2_crowd_level" value="3"> 3：非常に混雑</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">水際接近（多摩川本流への進入）(0-3)</label>
+          <div class="options">
+            <label><input type="radio" name="h2_water_edge_approach" value="0"> 0：なし（本流・水際石畳に近づく人がいない）</label>
+            <label><input type="radio" name="h2_water_edge_approach" value="1"> 1：少し（水際石畳の上でのみ滞留）</label>
+            <label><input type="radio" name="h2_water_edge_approach" value="2"> 2：頻繁（本流に足をつける、危険な岩場への立ち入り等）</label>
+            <label><input type="radio" name="h2_water_edge_approach" value="3"> 3：常に危険接近（飲酒での本流進入、飛び込み等）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">滞留密度 (0-3)</label>
+          <div class="options">
+            <label><input type="radio" name="h2_density_level" value="0"> 0：分散（通路・階段にほぼ人がいない）</label>
+            <label><input type="radio" name="h2_density_level" value="1"> 1：やや集中（スペースに余裕あり）</label>
+            <label><input type="radio" name="h2_density_level" value="2"> 2：集中（他グループとの距離が近い）</label>
+            <label><input type="radio" name="h2_density_level" value="3"> 3：密集（身動き困難、転落の危険）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">対岸（BBQ場側）の状況影響 (0-3)<span class="req">*</span></label>
+          <div class="options">
+            <label><input type="radio" name="h2_opposite_bank_impact" value="0"> 0：影響なし（平穏・空いている、またはBBQ場が閉場）</label>
+            <label><input type="radio" name="h2_opposite_bank_impact" value="1"> 1：やや混雑（対岸が賑やか）</label>
+            <label><input type="radio" name="h2_opposite_bank_impact" value="2"> 2：高リスク（対岸で多数飲酒・騒ぎ発生）</label>
+            <label><input type="radio" name="h2_opposite_bank_impact" value="3"> 3：深刻（漂流物や、川を渡ろうとする動きあり）</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">危険フラグ</label>
+          <div class="options">
+            <label><input type="checkbox" name="h2_danger_flags" value="本流泳ぎ"> 本流泳ぎ</label>
+            <label><input type="checkbox" name="h2_danger_flags" value="対岸からの移動"> 対岸からの移動</label>
+            <label><input type="checkbox" name="h2_danger_flags" value="飛び込み"> 飛び込み</label>
+            <label><input type="checkbox" name="h2_danger_flags" value="深みへ転落"> 深みへ転落</label>
+            <label><input type="checkbox" name="h2_danger_flags" value="飲酒状態の接近"> 飲酒状態の接近</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="q">状況メモ（任意）</label>
+          <textarea name="h2_site_memo"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">イベント発生（任意）</label>
+          <textarea name="h2_event_log"></textarea>
+        </div>
+        <div class="field">
+          <label class="q">一言サマリー（任意）</label>
+          <input type="text" name="h2_summary">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>現場の写真 <span class="badge">本流・水際・空のみ／最大1枚・10MB</span></h2>
+        <div class="notice">撮影対象：主要な水際、アクセス路、雨上がりに影響を受けやすい低地スペース。
+水没リスクのある境界線や、地面のぬかるみ・泥の堆積状況が判別できるよう、毎回固定したアングルで撮影してください。
+急な増水や天候急変時は現場に近づかず、安全な高台・防潮堤側から撮影してください。</div>
+        <div class="field">
+          <input type="file" name="h2_photo" accept="image/*">
+        </div>
+      </div>
+    </section>
+
+    <button type="submit" class="submit">送信する</button>
+  </form>
+  <div id="result"></div>
+</main>
+
+<script>
+const areaSelect = document.getElementById('areaSelect');
+const sections = document.querySelectorAll('.area-section');
+
+function setRequiredWithin(section, on){
+  section.querySelectorAll('input[type=radio], input[type=text], select').forEach(el=>{
+    // 状況メモ・一言サマリー・危険フラグは元々任意なので対象外
+    const optionalNames = ['site_memo','event_log','summary','danger_flags'];
+    const isOptional = optionalNames.some(n => el.name.endsWith(n));
+    if(!isOptional && el.type !== 'checkbox'){
+      if(el.type === 'radio'){
+        // ラジオグループはグループ内どれか1つにrequiredを付与すれば良い
+        el.required = on;
+      } else {
+        el.required = on;
+      }
+    }
+  });
+}
+
+areaSelect.addEventListener('change', () => {
+  sections.forEach(sec => {
+    const match = sec.dataset.area === areaSelect.value;
+    sec.classList.toggle('active', match);
+    setRequiredWithin(sec, match);
+  });
+});
+
+// ===== 気象庁・水位ステータスの取得と表示 =====
+const statusBar = document.getElementById('statusBar');
+const statusText = document.getElementById('statusText');
+const statusUpdated = document.getElementById('statusUpdated');
+const overlay = document.getElementById('emergencyOverlay');
+const overlayDetail = document.getElementById('emergencyDetail');
+const overlayAck = document.getElementById('emergencyAck');
+
+let lastAckedAlertKey = null; // 同じ危険状態で毎回ポップアップしないようにする
+
+function formatUpdated(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('ja-JP', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+
+async function refreshStatus(){
+  try {
+    const res = await fetch('/api/status');
+    const s = await res.json();
+
+    const warnParts = (s.warnings && s.warnings.length) ? s.warnings.join('・') : '発令中の警報なし';
+    const riverParts = (s.river_level_m !== null && s.river_level_m !== undefined)
+      ? `多摩川（二子橋付近）水位 ${s.river_level_m}m${s.river_level_source === 'manual' ? '（手動入力）' : ''}`
+      : '多摩川水位データなし';
+
+    statusText.textContent = `${warnParts} ／ ${riverParts}`;
+    statusUpdated.textContent = `更新: ${formatUpdated(s.fetched_at)}`;
+
+    statusBar.classList.remove('caution', 'danger');
+    if (s.alert_level === 'caution') statusBar.classList.add('caution');
+    if (s.alert_level === 'danger') statusBar.classList.add('danger');
+
+    if (s.alert_level === 'danger') {
+      const alertKey = `${warnParts}|${s.river_level_m}`;
+      if (lastAckedAlertKey !== alertKey) {
+        overlayDetail.textContent =
+          `${warnParts}。${riverParts}。現場の安全を最優先に、速やかな避難誘導を検討してください。`;
+        overlay.classList.add('show');
+      }
+    }
+  } catch (err) {
+    statusText.textContent = '気象・水位情報の取得に失敗しました（通信環境をご確認ください）';
+  }
+}
+
+overlayAck.addEventListener('click', () => {
+  overlay.classList.remove('show');
+  lastAckedAlertKey = statusText.textContent; // このセッション内では再ポップアップしない
+});
+
+refreshStatus();
+setInterval(refreshStatus, 5 * 60 * 1000); // 5分ごとに自動更新
+
+document.getElementById('obsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const resultEl = document.getElementById('result');
+  resultEl.textContent = '送信中...';
+  resultEl.className = '';
+
+  const formData = new FormData(e.target);
+  try {
+    const res = await fetch('/submit', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      resultEl.textContent = `送信完了しました（観測ID: ${data.observation_id}）`;
+      resultEl.className = 'ok';
+      e.target.reset();
+      sections.forEach(sec => sec.classList.remove('active'));
+    } else {
+      resultEl.textContent = `エラー: ${data.error}`;
+      resultEl.className = 'err';
+    }
+  } catch (err) {
+    resultEl.textContent = `通信エラー: ${err}`;
+    resultEl.className = 'err';
+  }
+});
+</script>
+</body>
+</html>
