@@ -122,15 +122,21 @@
                 cardWeather.classList.remove('border-amber-500', 'border-red-500', 'border-emerald-500');
                 weatherEl.classList.remove('text-amber-600', 'text-red-600', 'text-emerald-600');
 
-              // 🔒 【修正後】Noneという文字警報を強制的に「警報なし」にする安全装置
-const joinedWarnings = s.warnings ? s.warnings.join('・') : '';
+              // 🔒 【最終強化版】「None」という文字がどこかに含まれていたら、強制的に「警報なし」にする
+const joinedWarnings = s.warnings ? String(s.warnings).join ? s.warnings.join('・') : String(s.warnings) : '';
 
-if (s.warnings && s.warnings.length > 0 && joinedWarnings !== 'None' && joinedWarnings.trim() !== '') {
+if (s.warnings && s.warnings.length > 0 && !joinedWarnings.includes('None') && joinedWarnings.trim() !== '') {
     const isDanger = s.alert_level === 'danger';
+    cardWeather.classList.remove('border-emerald-500', 'border-amber-500', 'border-red-500');
+    weatherEl.classList.remove('text-emerald-600', 'text-amber-600', 'text-red-600');
+    
     cardWeather.classList.add(isDanger ? 'border-red-500' : 'border-amber-500');
     weatherEl.classList.add(isDanger ? 'text-red-600' : 'text-amber-600');
-    weatherEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${escapeHtml(s.warnings.join('・'))} 発令中`;
+    weatherEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${escapeHtml(joinedWarnings)} 発令中`;
 } else {
+    cardWeather.classList.remove('border-emerald-500', 'border-amber-500', 'border-red-500');
+    weatherEl.classList.remove('text-emerald-600', 'text-amber-600', 'text-red-600');
+    
     cardWeather.classList.add('border-emerald-500');
     weatherEl.classList.add('text-emerald-600');
     weatherEl.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> 警報・注意報なし`;
