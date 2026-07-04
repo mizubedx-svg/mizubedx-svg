@@ -530,3 +530,79 @@ if __name__ == "__main__":
 
     print(f"Waitress WSGIサーバーを起動します: http://{host}:{port} (threads={threads})")
     serve(app, host=host, port=port, threads=threads)
+import csv
+import io
+from flask import make_response
+
+@app.route("/api/report/export/csv")
+def export_csv():
+    """データベースの全観測データを、設計したGoogleスプレッドシートのA〜V列の形式で出力する"""
+    db = get_db()
+    cursor = db.cursor()
+    
+    # データをID降順（または昇順）で取得
+    cursor.execute("SELECT * FROM observations ORDER BY id ASC")
+    rows = cursor.fetchall()
+    
+    # メモリ上にCSVを作成（ExcelやGoogleシートで文字化けしないようにUTF-8-SIGにする）
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # 1. 設計したスプレッドシートのヘッダー（A列〜V列）を書き出す
+    writer.writerow([
+        "日付", "時間", "観測者ID", "観測エリア", "時間帯", "天候", 
+        "前日〜当日の雨", "上流の影響", "水位", "流速", "濁り", 
+        "人の多さ", "水際接近", "滞留密度", "飲酒レベル", 
+        "保護者の監視レベル", "対岸の状況影響", "危険フラグ", 
+        "現場メモ", "イベントログ", "スタッフサマリー", "写真URL"
+    ])
+    
+    # 2. データベースの各行を、スプレッドシートの列の並びに変換して書き出す
+    for r in rows:
+        # データベース内の危険フラグ(JSON文字列や文字列)の処理
+        danger_flags = r.get("danger_flags", "")
+        if isinstance(danger_flags, list):
+            danger_flags_str = ", ".join(danger_flags)
+        elif danger_flags and (danger_flags.startswith("[") or danger_flags.startswith("{")):
+            try:
+                import json
+                flags_list = json.loads(danger_flags)
+                danger_flags_str = ", ".join(flags_list) if isinstance(flags_list, list) else str(flags_list)
+            except:
+                danger_flags_str = str(danger_flags)
+        else:
+            danger_flags_str = str(danger_flags) if danger_flags else ""
+
+        # 写真URLの取得（カラム名が異なる場合は適宜調整してください）
+        photo_url = r.get("photo_url") or r.get("image_url") or r.get("photos") or ""
+
+        # 各カラムをA〜V列の順番に綺麗にマッピング
+        writer.writerow([
+            r.get("observation_date", ""),
+            r.get("observation_time", ""),
+            r.get("observer_name") or r.get("observer_id", ""),
+            r.get("area", ""),
+            r.get("time_of_day", ""),
+            r.get("weather", ""),
+            r.get("rain_snapshot", ""),
+            r.get("upstream_snapshot", ""),
+            r.get("water_level", r.get("river_level", "")),
+            r.get("flow_speed", ""),
+            r.get("turbidity", ""),
+            r.get("crowd_density", ""),
+            r.get("water_approach", ""),
+            r.get("stay_density", ""),
+            r.get("alcohol_level", ""),      # BBQのみ想定
+            r.get("parent_guard_level", ""), # 兵庫1のみ想定
+            r.get("opposite_bank_level", ""),# 兵庫2のみ想定
+            danger_flags_str,
+            r.get("report_summary", r.get("summary", "")), # 現場メモ/状況メモ
+            r.get("event_log", ""),
+            r.get("ai_summary", ""),          # スタッフサマリー/AIサマリー
+            photo_url
+        ])
+    
+    response = make_response(output.getvalue().encode('utf-8-sig'))
+    response.headers["Content-Disposition"] = "attachment; filename=mizube_export.csv"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
+    return response
