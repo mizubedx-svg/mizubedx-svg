@@ -3,6 +3,7 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime
+from functools import wraps
 
 from flask import Flask, g, render_template, request, jsonify, Response
 from werkzeug.utils import secure_filename
@@ -50,9 +51,35 @@ AREA_CONFIG = {
     },
 }
 
+# ==========================================
+# 🔑 管理者用の認証設定（ここを自由に変更してください）
+# ==========================================
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mizubedx2026") # 👈仮のパスワードです
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def check_auth(username, password):
+    """ユーザー名とパスワードが正しいかチェックする関数"""
+    return username == ADMIN_USER and password == ADMIN_PASSWORD
+
+
+def requires_auth(f):
+    """管理画面のルート（URL）に鍵をかけるためのデコレータ関数"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return Response(
+                "認証が必要です。正しいユーザー名とパスワードを入力してください。",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Login Required"'}
+            )
+        return f(*args, **kwargs)
+    return decorated
 
 
 def get_db():
@@ -115,6 +142,7 @@ def api_status():
 
 
 @app.route("/admin/river_level", methods=["POST"])
+@requires_auth  # 🔒 ロックを追加
 def admin_river_level():
     """水位の正規自動連携が未契約の場合の、スタッフによる手動入力バックアップ。
     現場スタッフが国交省「川の防災情報」を目視確認し、数値を入力する運用を想定。
@@ -326,6 +354,7 @@ def submit():
 # ------------------------------------------------------------------
 @app.route("/dashboard")
 @app.route("/dashboard.html")
+@requires_auth  # 🔒 ロックを追加
 def dashboard():
     return render_template("dashboard.html")
 
@@ -349,6 +378,7 @@ def _fetch_observation_with_area_data(db, observation_id):
 
 
 @app.route("/api/observations")
+@requires_auth  # 🔒 ロックを追加
 def api_observations():
     """ダッシュボード一覧表示用：観測ログ＋一言サマリー（report_summary優先）を返す。"""
     db = get_db()
@@ -398,6 +428,7 @@ def api_observations():
 # 日次PDFレポート（Gemini要約＋写真埋め込み）
 # ------------------------------------------------------------------
 @app.route("/api/report/<int:observation_id>/pdf")
+@requires_auth  # 🔒 ロックを追加
 def api_report_pdf(observation_id):
     """観測データからAI一言サマリー＋写真付きの安全パトロール報告書PDFを生成して返す。
     report_summaryが未生成、または ?refresh=1 が指定された場合のみGemini APIを呼び出す
@@ -479,18 +510,11 @@ def api_report_pdf(observation_id):
 
 # ------------------------------------------------------------------
 # DB初期化
-#   Flask開発サーバー実行時（python app.py）だけでなく、
-#   `waitress-serve app:app` のようにWSGIサーバーから直接importされる場合にも
-#   確実にテーブルが作成されているよう、モジュール読み込み時に実行する。
-#   schema.sqlはすべて CREATE TABLE IF NOT EXISTS のため、既存データは失われない。
 # ------------------------------------------------------------------
 init_db()
 
 
 if __name__ == "__main__":
-    # 本番運用は同時アクセスに耐えるWSGIサーバー（waitress）で起動する。
-    # Flaskの開発用サーバー（app.run）はシングルスレッド・デバッグ用途のみを想定しており、
-    # 複数人が同時にフォームを送信する現場運用には適さないため使用しない。
     from waitress import serve
 
     host = os.environ.get("HOST", "0.0.0.0")
