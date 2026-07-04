@@ -138,6 +138,13 @@ def api_status():
     """
     db = get_db()
     status = external_data.get_external_status(db)
+    
+    # 🔒 【安全装置】画面の「None発令中」を綺麗な日本語に修正
+    if status and isinstance(status, dict):
+        warnings = status.get("warnings")
+        if not warnings or warnings == "None" or warnings == ["None"]:
+            status["warnings"] = ["なし（現在、発令中の警報はありません）"]
+            
     return jsonify(status)
 
 
