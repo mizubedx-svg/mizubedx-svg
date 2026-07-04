@@ -50,11 +50,15 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                <h3 class="font-bold text-slate-700 flex items-center"><i class="fa-solid fa-database mr-2 text-blue-600"></i> パトロール観測データログ</h3>
-                <button onclick="loadDashboard()" class="text-sm text-slate-500 hover:text-blue-600 font-medium transition"><i class="fa-solid fa-rotate mr-1"></i> 更新</button>
-            </div>
+        <div class="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+    <h3 class="font-bold text-slate-700 flex items-center"><i class="fa-solid fa-database mr-2 text-blue-600"></i> パトロール観測データログ</h3>
+    <div class="flex items-center space-x-3">
+        <a href="/api/report/export/csv" class="text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition shadow-sm flex items-center">
+            <i class="fa-solid fa-file-excel mr-1"></i> スプレッドシート用出力
+        </a>
+        <button onclick="loadDashboard()" class="text-sm text-slate-500 hover:text-blue-600 font-medium transition"><i class="fa-solid fa-rotate mr-1"></i> 更新</button>
+    </div>
+</div>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
