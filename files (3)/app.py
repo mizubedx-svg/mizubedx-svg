@@ -5,7 +5,9 @@ import uuid
 from datetime import datetime
 from functools import wraps
 
-from flask import Flask, g, render_template, request, jsonify, Response
+from flask import Flask, g, render_template, request, jsonify, Response, make_response
+import csv
+import io
 from werkzeug.utils import secure_filename
 
 import external_data
@@ -52,10 +54,10 @@ AREA_CONFIG = {
 }
 
 # ==========================================
-# 🔑 管理者用の認証設定（ここを自由に変更してください）
+# 🔑 管理者用の認証設定
 # ==========================================
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mizubedx2026") # 👈仮のパスワードです
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mizubedx2026")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
@@ -133,9 +135,7 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    """現在の気象庁警報・多摩川水位・危険度を返す。
-    フォームを開いた瞬間にフロントから呼ばれる想定（キャッシュTTL内は再取得しない）。
-    """
+    """現在の気象庁警報・多摩川水位・危険度を返す。"""
     db = get_db()
     status = external_data.get_external_status(db)
     
@@ -149,11 +149,8 @@ def api_status():
 
 
 @app.route("/admin/river_level", methods=["POST"])
-@requires_auth  # 🔒 ロックを追加
+@requires_auth
 def admin_river_level():
-    """水位の正規自動連携が未契約の場合の、スタッフによる手動入力バックアップ。
-    現場スタッフが国交省「川の防災情報」を目視確認し、数値を入力する運用を想定。
-    """
     data = request.get_json(silent=True) or request.form
     try:
         level_m = float(data.get("level_m"))
@@ -165,7 +162,6 @@ def admin_river_level():
 
     db = get_db()
     external_data.save_manual_river_level(db, level_m, observed_at, entered_by)
-    # 手動入力後は即座に再判定してキャッシュを更新
     status = external_data.get_external_status(db, force_refresh=True)
     return jsonify({"ok": True, "status": status})
 
@@ -198,9 +194,6 @@ def submit():
             ),
         )
         obs_id = cur.lastrowid
-
-        # 公的気象データ（キャッシュ済みならAPIを叩かず即返る）を取得し、
-        # Gemini APIへのプロンプトに「大雨注意報発令中、水位〇m」のように組み込む
         external_status = external_data.get_external_status(db)
 
         if area == "二子玉川バーベキュー場":
@@ -226,28 +219,12 @@ def submit():
                     river_discharge_snapshot_m3s, external_snapshot_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    obs_id,
-                    form.get("bbq_time_slot"),
-                    form.get("bbq_weather"),
-                    form.get("bbq_rain_recent"),
-                    form.get("bbq_upstream_impact"),
-                    form.get("bbq_water_level"),
-                    form.get("bbq_flow_speed"),
-                    form.get("bbq_turbidity"),
-                    form.get("bbq_crowd_level"),
-                    form.get("bbq_water_edge_approach"),
-                    form.get("bbq_density_level"),
-                    form.get("bbq_alcohol_level"),
-                    get_multi(form, "bbq_danger_flags"),
-                    form.get("bbq_site_memo"),
-                    form.get("bbq_event_log"),
-                    form.get("bbq_summary"),
-                    ai_summary,
-                    photo_path,
-                    json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
-                    external_status.get("river_level_m"),
-                    external_status.get("river_discharge_m3s"),
-                    external_status.get("fetched_at"),
+                    obs_id, form.get("bbq_time_slot"), form.get("bbq_weather"), form.get("bbq_rain_recent"), form.get("bbq_upstream_impact"),
+                    form.get("bbq_water_level"), form.get("bbq_flow_speed"), form.get("bbq_turbidity"), form.get("bbq_crowd_level"),
+                    form.get("bbq_water_edge_approach"), form.get("bbq_density_level"), form.get("bbq_alcohol_level"),
+                    get_multi(form, "bbq_danger_flags"), form.get("bbq_site_memo"), form.get("bbq_event_log"), form.get("bbq_summary"),
+                    ai_summary, photo_path, json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
+                    external_status.get("river_level_m"), external_status.get("river_discharge_m3s"), external_status.get("fetched_at"),
                 ),
             )
 
@@ -259,8 +236,7 @@ def submit():
                 "水位": form.get("h1_water_level"), "流速": form.get("h1_flow_speed"),
                 "濁り": form.get("h1_turbidity"), "人の多さ": form.get("h1_crowd_level"),
                 "水際接近": form.get("h1_water_edge_approach"), "滞留密度": form.get("h1_density_level"),
-                "保護者の監視レベル": form.get("h1_guardian_supervision"),
-                "危険フラグ": get_multi(form, "h1_danger_flags"),
+                "保護者の監視レベル": form.get("h1_guardian_supervision"), "危険フラグ": get_multi(form, "h1_danger_flags"),
             }
             ai_summary = external_data.generate_ai_summary(
                 area, h1_values, external_status, form.get("h1_summary")
@@ -275,28 +251,12 @@ def submit():
                     river_discharge_snapshot_m3s, external_snapshot_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    obs_id,
-                    form.get("h1_time_slot"),
-                    form.get("h1_weather"),
-                    form.get("h1_rain_recent"),
-                    form.get("h1_upstream_impact"),
-                    form.get("h1_water_level"),
-                    form.get("h1_flow_speed"),
-                    form.get("h1_turbidity"),
-                    form.get("h1_crowd_level"),
-                    form.get("h1_water_edge_approach"),
-                    form.get("h1_density_level"),
-                    form.get("h1_guardian_supervision"),
-                    get_multi(form, "h1_danger_flags"),
-                    form.get("h1_site_memo"),
-                    form.get("h1_event_log"),
-                    form.get("h1_summary"),
-                    ai_summary,
-                    photo_path,
-                    json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
-                    external_status.get("river_level_m"),
-                    external_status.get("river_discharge_m3s"),
-                    external_status.get("fetched_at"),
+                    obs_id, form.get("h1_time_slot"), form.get("h1_weather"), form.get("h1_rain_recent"), form.get("h1_upstream_impact"),
+                    form.get("h1_water_level"), form.get("h1_flow_speed"), form.get("h1_turbidity"), form.get("h1_crowd_level"),
+                    form.get("h1_water_edge_approach"), form.get("h1_density_level"), form.get("h1_guardian_supervision"),
+                    get_multi(form, "h1_danger_flags"), form.get("h1_site_memo"), form.get("h1_event_log"), form.get("h1_summary"),
+                    ai_summary, photo_path, json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
+                    external_status.get("river_level_m"), external_status.get("river_discharge_m3s"), external_status.get("fetched_at"),
                 ),
             )
 
@@ -306,8 +266,7 @@ def submit():
                 "天候": form.get("h2_weather"), "水位": form.get("h2_water_level"),
                 "流速": form.get("h2_flow_speed"), "濁り": form.get("h2_turbidity"),
                 "人の多さ": form.get("h2_crowd_level"), "水際接近": form.get("h2_water_edge_approach"),
-                "滞留密度": form.get("h2_density_level"),
-                "対岸の状況影響": form.get("h2_opposite_bank_impact"),
+                "滞留密度": form.get("h2_density_level"), "対岸の状況影響": form.get("h2_opposite_bank_impact"),
                 "危険フラグ": get_multi(form, "h2_danger_flags"),
             }
             ai_summary = external_data.generate_ai_summary(
@@ -323,25 +282,11 @@ def submit():
                     river_discharge_snapshot_m3s, external_snapshot_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    obs_id,
-                    form.get("h2_weather"),
-                    form.get("h2_water_level") or None,
-                    form.get("h2_flow_speed"),
-                    form.get("h2_turbidity"),
-                    form.get("h2_crowd_level"),
-                    form.get("h2_water_edge_approach") or None,
-                    form.get("h2_density_level") or None,
-                    form.get("h2_opposite_bank_impact"),
-                    get_multi(form, "h2_danger_flags"),
-                    form.get("h2_site_memo"),
-                    form.get("h2_event_log"),
-                    form.get("h2_summary"),
-                    ai_summary,
-                    photo_path,
-                    json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
-                    external_status.get("river_level_m"),
-                    external_status.get("river_discharge_m3s"),
-                    external_status.get("fetched_at"),
+                    obs_id, form.get("h2_weather"), form.get("h2_water_level") or None, form.get("h2_flow_speed"), form.get("h2_turbidity"),
+                    form.get("h2_crowd_level"), form.get("h2_water_edge_approach") or None, form.get("h2_density_level") or None,
+                    form.get("h2_opposite_bank_impact"), get_multi(form, "h2_danger_flags"), form.get("h2_site_memo"), form.get("h2_event_log"),
+                    form.get("h2_summary"), ai_summary, photo_path, json.dumps(external_status.get("warnings") or [], ensure_ascii=False),
+                    external_status.get("river_level_m"), external_status.get("river_discharge_m3s"), external_status.get("fetched_at"),
                 ),
             )
 
@@ -361,13 +306,12 @@ def submit():
 # ------------------------------------------------------------------
 @app.route("/dashboard")
 @app.route("/dashboard.html")
-@requires_auth  # 🔒 ロックを追加
+@requires_auth
 def dashboard():
     return render_template("dashboard.html")
 
 
 def _fetch_observation_with_area_data(db, observation_id):
-    """observations + エリア別テーブルをJOINして1件取得するヘルパー。"""
     obs = db.execute(
         "SELECT * FROM observations WHERE id = ?", (observation_id,)
     ).fetchone()
@@ -379,15 +323,14 @@ def _fetch_observation_with_area_data(db, observation_id):
         return obs, None, None
 
     area_row = db.execute(
-        f"SELECT * FROM {config['table']} WHERE observation_id = ?", (observation_id,)
+        "SELECT * FROM {} WHERE observation_id = ?".format(config['table']), (observation_id,)
     ).fetchone()
     return obs, config, area_row
 
 
 @app.route("/api/observations")
-@requires_auth  # 🔒 ロックを追加
+@requires_auth
 def api_observations():
-    """ダッシュボード一覧表示用：観測ログ＋一言サマリー（report_summary優先）を返す。"""
     db = get_db()
     observations = db.execute(
         "SELECT * FROM observations ORDER BY id DESC LIMIT 200"
@@ -403,7 +346,7 @@ def api_observations():
         area_row = None
         if config:
             area_row = db.execute(
-                f"SELECT * FROM {config['table']} WHERE observation_id = ?", (obs["id"],)
+                "SELECT * FROM {} WHERE observation_id = ?".format(config['table']), (obs["id"],)
             ).fetchone()
 
         danger_flags = []
@@ -412,35 +355,98 @@ def api_observations():
         if area_row is not None:
             if area_row["danger_flags"]:
                 danger_flags = area_row["danger_flags"].split(",")
-            # 一言サマリーの優先順位：日次PDF用report_summary → 送信時ai_summary → スタッフ入力summary
             summary_preview = area_row["report_summary"] or area_row["ai_summary"] or area_row["summary"]
             has_photo = bool(area_row["photo_path"])
 
         results.append({
-            "id": obs["id"],
-            "observation_date": obs["observation_date"],
-            "observation_time": obs["observation_time"],
-            "observer_id": obs["observer_id"],
-            "area": obs["area"],
-            "danger_flags": danger_flags,
-            "summary_preview": summary_preview,
-            "has_report_summary": bool(area_row and area_row["report_summary"]),
+            "id": obs["id"], "observation_date": obs["observation_date"], "observation_time": obs["observation_time"],
+            "observer_id": obs["observer_id"], "area": obs["area"], "danger_flags": danger_flags,
+            "summary_preview": summary_preview, "has_report_summary": bool(area_row and area_row["report_summary"]),
             "has_photo": has_photo,
         })
 
     return jsonify({"observations": results, "today_count": today_count})
 
 
+# 📊 【新設】スプレッドシート用の一括データ出力ルート (正しい位置に配置)
+@app.route("/api/report/export/csv")
+@requires_auth
+def export_csv():
+    """データベースの全エリアの観測データを、設計したGoogleスプレッドシート形式に紐解いて出力する"""
+    db = get_db()
+    observations = db.execute("SELECT * FROM observations ORDER BY id ASC").fetchall()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # スプレッドシートのA列〜V列のヘッダー定義
+    writer.writerow([
+        "日付", "時間", "観測者ID", "観測エリア", "時間帯", "天候", 
+        "前日〜当日の雨", "上流の影響", "水位", "流速", "濁り", 
+        "人の多さ", "水際接近", "滞留密度", "飲酒レベル", 
+        "保護者の監視レベル", "対岸の状況影響", "危険フラグ", 
+        "現場メモ", "イベントログ", "スタッフサマリー", "写真URL"
+    ])
+    
+    for obs in observations:
+        config = AREA_CONFIG.get(obs["area"])
+        area_row = None
+        if config:
+            area_row = db.execute(
+                "SELECT * FROM {} WHERE observation_id = ?".format(config['table']), (obs["id"],)
+            ).fetchone()
+            
+        if not area_row:
+            continue
+
+        # 各エリアごとの特有のカラムを安全に抽出
+        time_slot = area_row["time_slot"] if "time_slot" in area_row.keys() else ""
+        rain_recent = area_row["rain_recent"] if "rain_recent" in area_row.keys() else ""
+        upstream_impact = area_row["upstream_impact"] if "upstream_impact" in area_row.keys() else ""
+        alcohol_level = area_row["alcohol_level"] if "alcohol_level" in area_row.keys() else ""
+        guardian_supervision = area_row["guardian_supervision"] if "guardian_supervision" in area_row.keys() else ""
+        opposite_bank_impact = area_row["opposite_bank_impact"] if "opposite_bank_impact" in area_row.keys() else ""
+        
+        # 写真URL（サーバーのドメインと合体させてリンク化）
+        photo_url = f"{request.host_url}static/{area_row['photo_path']}" if area_row["photo_path"] else ""
+
+        writer.writerow([
+            obs["observation_date"],
+            obs["observation_time"],
+            obs["observer_id"],
+            obs["area"],
+            time_slot,
+            area_row["weather"],
+            rain_recent,
+            upstream_impact,
+            area_row["water_level"],
+            area_row["flow_speed"],
+            area_row["turbidity"],
+            area_row["crowd_level"],
+            area_row["water_edge_approach"],
+            area_row["density_level"],
+            alcohol_level,
+            guardian_supervision,
+            opposite_bank_impact,
+            area_row["danger_flags"] or "",
+            area_row["site_memo"] or "",
+            area_row["event_log"] or "",
+            area_row["summary"] or "",
+            photo_url
+        ])
+    
+    response = make_response(output.getvalue().encode('utf-8-sig'))
+    response.headers["Content-Disposition"] = "attachment; filename=mizube_export.csv"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
+    return response
+
+
 # ------------------------------------------------------------------
 # 日次PDFレポート（Gemini要約＋写真埋め込み）
 # ------------------------------------------------------------------
 @app.route("/api/report/<int:observation_id>/pdf")
-@requires_auth  # 🔒 ロックを追加
+@requires_auth
 def api_report_pdf(observation_id):
-    """観測データからAI一言サマリー＋写真付きの安全パトロール報告書PDFを生成して返す。
-    report_summaryが未生成、または ?refresh=1 が指定された場合のみGemini APIを呼び出す
-    （キャッシュにより、閲覧のたびに再生成しない）。
-    """
     db = get_db()
     obs, config, area_row = _fetch_observation_with_area_data(db, observation_id)
 
@@ -450,43 +456,30 @@ def api_report_pdf(observation_id):
         return jsonify({"ok": False, "error": "観測エリアの詳細データが見つかりません"}), 404
 
     force_refresh = request.args.get("refresh") == "1"
-
-    score_items = [
-        (label, area_row[col]) for col, label in config["score_labels"].items()
-    ]
+    score_items = [(label, area_row[col]) for col, label in config["score_labels"].items()]
     danger_flags = area_row["danger_flags"].split(",") if area_row["danger_flags"] else []
     site_memo = area_row["site_memo"]
     staff_summary = area_row["summary"]
 
-    # 観測時点の気象・水位データ（スナップショット）。
-    # 旧データ等でスナップショットが無い場合は、現在の外部データで代替する
-    # （その場合は「観測時点データなし・現在値」であることをPDF上に明記する）。
     if area_row["external_snapshot_at"]:
         weather_context = {
             "warnings": json.loads(area_row["weather_warnings_snapshot"]) if area_row["weather_warnings_snapshot"] else [],
-            "river_level_m": area_row["river_level_snapshot_m"],
-            "river_discharge_m3s": area_row["river_discharge_snapshot_m3s"],
-            "fetched_at": area_row["external_snapshot_at"],
-            "is_snapshot": True,
+            "river_level_m": area_row["river_level_snapshot_m"], "river_discharge_m3s": area_row["river_discharge_snapshot_m3s"],
+            "fetched_at": area_row["external_snapshot_at"], "is_snapshot": True,
         }
     else:
         live_status = external_data.get_external_status(db)
         weather_context = {
-            "warnings": live_status.get("warnings") or [],
-            "river_level_m": live_status.get("river_level_m"),
-            "river_discharge_m3s": live_status.get("river_discharge_m3s"),
-            "fetched_at": live_status.get("fetched_at"),
+            "warnings": live_status.get("warnings") or [], "river_level_m": live_status.get("river_level_m"),
+            "river_discharge_m3s": live_status.get("river_discharge_m3s"), "fetched_at": live_status.get("fetched_at"),
             "is_snapshot": False,
         }
 
     report_summary = area_row["report_summary"]
     if not report_summary or force_refresh:
-        report_summary = report_generator.generate_report_summary(
-            obs["area"], score_items, danger_flags, site_memo, weather_context
-        )
+        report_summary = report_generator.generate_report_summary(obs["area"], score_items, danger_flags, site_memo, weather_context)
         db.execute(
-            f"UPDATE {config['table']} SET report_summary = ?, report_generated_at = ? "
-            f"WHERE observation_id = ?",
+            "UPDATE {} SET report_summary = ?, report_generated_at = ? WHERE observation_id = ?".format(config['table']),
             (report_summary, datetime.now().isoformat(timespec="seconds"), observation_id),
         )
         db.commit()
@@ -497,29 +490,18 @@ def api_report_pdf(observation_id):
         photo_data_uri = report_generator.resize_photo_to_data_uri(photo_abs_path)
 
     pdf_bytes = report_generator.render_report_pdf(
-        observation=obs,
-        score_items=score_items,
-        danger_flags=danger_flags,
-        site_memo=site_memo,
-        staff_summary=staff_summary,
-        report_summary=report_summary,
-        photo_data_uri=photo_data_uri,
-        weather_context=weather_context,
+        observation=obs, score_items=score_items, danger_flags=danger_flags, site_memo=site_memo,
+        staff_summary=staff_summary, report_summary=report_summary, photo_data_uri=photo_data_uri, weather_context=weather_context,
     )
 
     filename = f"safety_patrol_report_{observation_id}_{obs['observation_date']}.pdf"
-    return Response(
-        pdf_bytes,
-        mimetype="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return Response(pdf_bytes, mimetype="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # ------------------------------------------------------------------
 # DB初期化
 # ------------------------------------------------------------------
 init_db()
-
 
 if __name__ == "__main__":
     from waitress import serve
@@ -530,79 +512,3 @@ if __name__ == "__main__":
 
     print(f"Waitress WSGIサーバーを起動します: http://{host}:{port} (threads={threads})")
     serve(app, host=host, port=port, threads=threads)
-import csv
-import io
-from flask import make_response
-
-@app.route("/api/report/export/csv")
-def export_csv():
-    """データベースの全観測データを、設計したGoogleスプレッドシートのA〜V列の形式で出力する"""
-    db = get_db()
-    cursor = db.cursor()
-    
-    # データをID降順（または昇順）で取得
-    cursor.execute("SELECT * FROM observations ORDER BY id ASC")
-    rows = cursor.fetchall()
-    
-    # メモリ上にCSVを作成（ExcelやGoogleシートで文字化けしないようにUTF-8-SIGにする）
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # 1. 設計したスプレッドシートのヘッダー（A列〜V列）を書き出す
-    writer.writerow([
-        "日付", "時間", "観測者ID", "観測エリア", "時間帯", "天候", 
-        "前日〜当日の雨", "上流の影響", "水位", "流速", "濁り", 
-        "人の多さ", "水際接近", "滞留密度", "飲酒レベル", 
-        "保護者の監視レベル", "対岸の状況影響", "危険フラグ", 
-        "現場メモ", "イベントログ", "スタッフサマリー", "写真URL"
-    ])
-    
-    # 2. データベースの各行を、スプレッドシートの列の並びに変換して書き出す
-    for r in rows:
-        # データベース内の危険フラグ(JSON文字列や文字列)の処理
-        danger_flags = r.get("danger_flags", "")
-        if isinstance(danger_flags, list):
-            danger_flags_str = ", ".join(danger_flags)
-        elif danger_flags and (danger_flags.startswith("[") or danger_flags.startswith("{")):
-            try:
-                import json
-                flags_list = json.loads(danger_flags)
-                danger_flags_str = ", ".join(flags_list) if isinstance(flags_list, list) else str(flags_list)
-            except:
-                danger_flags_str = str(danger_flags)
-        else:
-            danger_flags_str = str(danger_flags) if danger_flags else ""
-
-        # 写真URLの取得（カラム名が異なる場合は適宜調整してください）
-        photo_url = r.get("photo_url") or r.get("image_url") or r.get("photos") or ""
-
-        # 各カラムをA〜V列の順番に綺麗にマッピング
-        writer.writerow([
-            r.get("observation_date", ""),
-            r.get("observation_time", ""),
-            r.get("observer_name") or r.get("observer_id", ""),
-            r.get("area", ""),
-            r.get("time_of_day", ""),
-            r.get("weather", ""),
-            r.get("rain_snapshot", ""),
-            r.get("upstream_snapshot", ""),
-            r.get("water_level", r.get("river_level", "")),
-            r.get("flow_speed", ""),
-            r.get("turbidity", ""),
-            r.get("crowd_density", ""),
-            r.get("water_approach", ""),
-            r.get("stay_density", ""),
-            r.get("alcohol_level", ""),      # BBQのみ想定
-            r.get("parent_guard_level", ""), # 兵庫1のみ想定
-            r.get("opposite_bank_level", ""),# 兵庫2のみ想定
-            danger_flags_str,
-            r.get("report_summary", r.get("summary", "")), # 現場メモ/状況メモ
-            r.get("event_log", ""),
-            r.get("ai_summary", ""),          # スタッフサマリー/AIサマリー
-            photo_url
-        ])
-    
-    response = make_response(output.getvalue().encode('utf-8-sig'))
-    response.headers["Content-Disposition"] = "attachment; filename=mizube_export.csv"
-    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
-    return response
