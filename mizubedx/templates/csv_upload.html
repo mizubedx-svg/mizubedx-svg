@@ -1,1 +1,30 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <input type="file" id="csvFile">
+    <button onclick="uploadCSV()">読み込み</button>
+    <div id="list"></div>
 
+    <script>
+        async function uploadCSV() {
+            let f = document.getElementById('csvFile').files[0];
+            let fd = new FormData(); fd.append('file', f);
+            let res = await fetch('/api/process-csv', {method:'POST', body:fd});
+            let json = await res.json();
+            let html = "";
+            json.data.forEach((row, i) => {
+                html += `<div>${row['日付']} ${row['【最重要】観測エリアを選択してください']} <button onclick='gen(${JSON.stringify(row)})'>PDF作成</button></div>`;
+            });
+            document.getElementById('list').innerHTML = html;
+        }
+        async function gen(row) {
+            let res = await fetch('/api/generate-pdf-from-row', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(row)
+            });
+            let blob = await res.blob();
+            let url = window.URL.createObjectURL(blob);
+            window.open(url);
+        }
+    </script>
+</body>
+</html>
