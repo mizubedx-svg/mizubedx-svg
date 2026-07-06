@@ -553,3 +553,59 @@ if __name__ == "__main__":
 
     print(f"Waitress WSGIサーバーを起動します: http://{host}:{port} (threads={threads})")
     serve(app, host=host, port=port, threads=threads)
+
+from flask import send_file, make_response
+import pandas as pd
+
+@app.route("/csv-to-pdf-tool")
+@requires_auth
+def csv_to_pdf_tool():
+    """CSVアップロード用画面を表示する（templates/csv_upload.html を作成してください）"""
+    return render_template("csv_upload.html")
+
+@app.route("/api/process-csv", methods=["POST"])
+@requires_auth
+def process_csv():
+    """CSVを解析し、行データリストを返す"""
+    file = request.files['file']
+    df = pd.read_csv(file)
+    # NaNを空文字に変換してJSON化
+    return jsonify({"data": df.fillna("").to_dict('records')})
+
+@app.route("/api/generate-pdf-from-row", methods=["POST"])
+@requires_auth
+def generate_pdf_from_row():
+    """選択された行のデータからPDFを生成する"""
+    data = request.json
+    
+    # データをPDF生成に適した形式にマッピング
+    # ※ここはCSVのヘッダー名に合わせています
+    observation = {
+        "area": data.get("【最重要】観測エリアを選択してください"),
+        "observation_date": data.get("日付"),
+        "observation_time": data.get("時間"),
+    }
+    
+    # スコア項目（PDFの表に表示されるもの）
+    score_items = [
+        ("水位", data.get("（BBQ場 ） 水位 (0-3)  ")),
+        ("流速", data.get("（BBQ場 ）流速 (0-3)  ")),
+        ("濁り", data.get("（BBQ場 ）濁り (0-3)  ")),
+        ("人の多さ", data.get("（BBQ場）人の多さ")),
+    ]
+    
+    # PDF生成実行
+    pdf_bytes = report_generator.render_report_pdf(
+        observation=observation,
+        score_items=score_items,
+        danger_flags=str(data.get("（BBQ場） 危険フラグ", "")).split(","),
+        site_memo=data.get("  【BBQ場】状況メモ  （任意）", ""),
+        staff_summary="",
+        report_summary=data.get("  【BBQ場】一言サマリー   （任意）", ""),
+        photo_data_uri=None
+    )
+    
+    response = make_response(pdf_bytes)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = "attachment; filename=report.pdf"
+    return response
