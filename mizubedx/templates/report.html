@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>安全パトロール報告書</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+    color: #1a2b30;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 3px solid #164f63;
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+  }
+  .doc-header h1 {
+    font-size: 18pt;
+    margin: 0;
+    color: #164f63;
+  }
+  .doc-header .subtitle {
+    font-size: 9pt;
+    color: #5c6f72;
+    margin-top: 2px;
+  }
+  .doc-header .meta {
+    text-align: right;
+    font-size: 9pt;
+    color: #5c6f72;
+  }
+  .info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 10pt;
+  }
+  .info-table td {
+    padding: 5px 8px;
+    border: 1px solid #dbe4e2;
+  }
+  .info-table td.label {
+    background: #eef6f8;
+    font-weight: 700;
+    width: 22%;
+    color: #164f63;
+  }
+  .summary-box {
+    background: #eef6f8;
+    border: 1px solid #a9d0da;
+    border-left: 5px solid #1f6f8b;
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+  .summary-box .tag {
+    font-size: 8pt;
+    font-weight: 700;
+    color: #1f6f8b;
+    letter-spacing: .05em;
+    margin-bottom: 4px;
+  }
+  .summary-box p {
+    margin: 0;
+    font-size: 11.5pt;
+    font-weight: 600;
+  }
+  h2.section {
+    font-size: 12pt;
+    color: #164f63;
+    border-left: 5px solid #1f6f8b;
+    padding-left: 8px;
+    margin: 18px 0 8px;
+  }
+  table.scores {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+    margin-bottom: 10px;
+  }
+  table.scores th, table.scores td {
+    border: 1px solid #dbe4e2;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  table.scores th {
+    background: #f4f7f6;
+    width: 32%;
+    color: #164f63;
+  }
+  .flags {
+    display: block;
+  }
+  .flag-chip {
+    display: inline-block;
+    background: #fdf2ef;
+    color: #b3423a;
+    border: 1px solid #f1c9c1;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 9pt;
+    margin: 2px 4px 2px 0;
+  }
+  .no-flags { color: #5c6f72; font-size: 9.5pt; }
+  .weather-badges { display: flex; gap: 8px; margin: 4px 0 10px; flex-wrap: wrap; }
+  .weather-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #f4f7f6; border: 1px solid #dbe4e2; border-radius: 999px;
+    padding: 3px 10px; font-size: 9pt; color: #164f63; font-weight: 700;
+  }
+  table.trend {
+    width: 48%; display: inline-table; vertical-align: top;
+    border-collapse: collapse; font-size: 8.5pt; margin: 0 1% 10px 0;
+  }
+  table.trend caption {
+    text-align: left; font-size: 8.5pt; font-weight: 700; color: #164f63;
+    margin-bottom: 3px; caption-side: top;
+  }
+  table.trend th, table.trend td {
+    border: 1px solid #dbe4e2; padding: 3px 6px; text-align: center;
+  }
+  table.trend th { background: #f4f7f6; color: #164f63; }
+  .trend-empty { font-size: 8.5pt; color: #5c6f72; }
+  .memo-box {
+    border: 1px solid #dbe4e2;
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 10pt;
+    white-space: pre-wrap;
+    min-height: 20px;
+  }
+  .photo-wrap {
+    text-align: center;
+    margin-top: 6px;
+  }
+  .photo-wrap img {
+    max-width: 100%;
+    max-height: 260px;
+    border: 1px solid #dbe4e2;
+    border-radius: 4px;
+  }
+  .photo-caption {
+    font-size: 8.5pt;
+    color: #5c6f72;
+    margin-top: 4px;
+  }
+  .doc-footer {
+    margin-top: 24px;
+    padding-top: 8px;
+    border-top: 1px solid #dbe4e2;
+    font-size: 8pt;
+    color: #5c6f72;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+  <div class="doc-header">
+    <div>
+      <h1>安全パトロール報告書</h1>
+      <div class="subtitle">水辺リスク観測システム／世田谷区役所 提出用</div>
+    </div>
+    <div class="meta">
+      観測ID：{{ observation.id }}<br>
+      生成日時：{{ generated_at }}
+    </div>
+  </div>
+
+  <table class="info-table">
+    <tr>
+      <td class="label">観測日時</td>
+      <td>{{ observation.observation_date }} {{ observation.observation_time }}</td>
+      <td class="label">観測員ID</td>
+      <td>{{ observation.observer_id }}</td>
+    </tr>
+    <tr>
+      <td class="label">観測エリア</td>
+      <td colspan="3">{{ observation.area }}</td>
+    </tr>
+  </table>
+
+  <div class="summary-box">
+    <div class="tag">AIサマリー（Gemini生成・要確認）</div>
+    <p>{{ report_summary }}</p>
+  </div>
+
+  <h2 class="section">観測時点の気象・水位データ</h2>
+  <div class="weather-badges">
+    <span class="weather-badge">🌡️ 気温: {% if weather_context.temperature_c is not none %}{{ weather_context.temperature_c }}℃{% else %}―{% endif %}</span>
+    <span class="weather-badge">💧 湿度: {% if weather_context.humidity_pct is not none %}{{ weather_context.humidity_pct }}%{% else %}―{% endif %}</span>
+  </div>
+  <table class="info-table">
+    <tr>
+      <td class="label">気象庁 警報・注意報</td>
+      <td colspan="3">
+        {% if weather_context.warnings %}{{ weather_context.warnings | join('、') }}{% else %}発令なし{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td class="label">多摩川 実測水位</td>
+      <td>{% if weather_context.river_level_m is not none %}{{ weather_context.river_level_m }} m{% else %}データなし{% endif %}</td>
+      <td class="label">流量シミュレーション参考値</td>
+      <td>{% if weather_context.river_discharge_m3s is not none %}{{ weather_context.river_discharge_m3s }} m3/s{% else %}データなし{% endif %}</td>
+    </tr>
+  </table>
+  <p style="font-size:8.5pt; color:#5c6f72; margin-top:-6px;">
+    {% if weather_context.is_snapshot %}
+    上記は観測データ送信時点（{{ weather_context.fetched_at }}）に取得したスナップショットです。
+    {% else %}
+    ※送信時点のスナップショットが記録されていないため、現在値（{{ weather_context.fetched_at }}取得）を代わりに表示しています。
+    {% endif %}
+    流量シミュレーション参考値はOpen-Meteo Flood API（GloFAS）による推定であり、実測水位とは異なります。
+  </p>
+
+  <h2 class="section">直近24時間の推移（レポート生成時点）</h2>
+  <div>
+    <table class="trend">
+      <caption>多摩川 実測水位 [m]</caption>
+      <tr>{% for p in history_tables.river_level %}<th>{{ p.time }}</th>{% endfor %}</tr>
+      <tr>{% for p in history_tables.river_level %}<td>{{ p.value }}</td>{% endfor %}</tr>
+    </table>
+    <table class="trend">
+      <caption>河川流量シミュレーション参考値 [m3/s]</caption>
+      <tr>{% for p in history_tables.river_discharge %}<th>{{ p.time }}</th>{% endfor %}</tr>
+      <tr>{% for p in history_tables.river_discharge %}<td>{{ p.value }}</td>{% endfor %}</tr>
+    </table>
+  </div>
+  {% if not history_tables.river_level and not history_tables.river_discharge %}
+  <p class="trend-empty">現時点では24時間分のトレンドデータが十分に蓄積されていません（システム運用開始から時間の経過とともに表示されます）。</p>
+  {% endif %}
+  <div>
+    <table class="trend">
+      <caption>気温 [℃]（直近24時間・時間単位）</caption>
+      <tr>{% for p in history_tables.temperature %}<th>{{ p.time }}</th>{% endfor %}</tr>
+      <tr>{% for p in history_tables.temperature %}<td>{{ p.value }}</td>{% endfor %}</tr>
+    </table>
+    <table class="trend">
+      <caption>湿度 [%]（直近24時間・時間単位）</caption>
+      <tr>{% for p in history_tables.humidity %}<th>{{ p.time }}</th>{% endfor %}</tr>
+      <tr>{% for p in history_tables.humidity %}<td>{{ p.value }}</td>{% endfor %}</tr>
+    </table>
+  </div>
+  <p style="font-size:8pt; color:#5c6f72; margin-top:-4px;">
+    気温・湿度はOpen-Meteo気象APIの時間単位実測データ。水位・流量は本システムが定期取得したスナップショットの抜粋（最大6点）です。
+  </p>
+
+  <h2 class="section">リスクスコア詳細</h2>
+  <table class="scores">
+    {% for label, value in score_items %}
+    <tr><th>{{ label }}</th><td>{{ value if value is not none else "―" }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2 class="section">危険フラグ</h2>
+  {% if danger_flags %}
+  <div class="flags">
+    {% for flag in danger_flags %}
+    <span class="flag-chip">{{ flag }}</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="no-flags">該当なし</div>
+  {% endif %}
+
+  <h2 class="section">状況メモ・スタッフサマリー</h2>
+  <div class="memo-box">{{ site_memo or "（記入なし）" }}</div>
+  {% if staff_summary %}
+  <p style="font-size:9.5pt; color:#5c6f72; margin-top:6px;">スタッフ一言サマリー：{{ staff_summary }}</p>
+  {% endif %}
+
+  <h2 class="section">現場写真</h2>
+  <div class="photo-wrap">
+    {% if photo_data_uri %}
+    <img src="{{ photo_data_uri }}" alt="現場写真">
+    <div class="photo-caption">定点撮影データ（リサイズ済み）</div>
+    {% else %}
+    <div class="no-flags">写真の添付なし</div>
+    {% endif %}
+  </div>
+
+  <div class="doc-footer">
+    <span>本報告書は水辺リスク観測システムにより自動生成されました。</span>
+    <span>ai_report_v1</span>
+  </div>
+
+</body>
+</html>
