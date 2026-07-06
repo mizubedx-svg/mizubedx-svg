@@ -10,8 +10,8 @@ import csv
 import io
 from werkzeug.utils import secure_filename
 
-import external_data
-import report_generator
+from mizubedx import external_data
+from mizubedx import report_generator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "water_risk.db")
